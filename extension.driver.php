@@ -206,40 +206,65 @@ class Extension_xcachelite extends Extension
         // Add new fieldset
         $group = new XMLElement('fieldset');
         $group->setAttribute('class', 'settings');
-        $group->appendChild(new XMLElement('legend', 'CacheLite'));
+        $group->appendChild(new XMLElement('legend', 'xCacheLite'));
 
         // Add Site Reference field
-        $label = Widget::Label(__('Cache Period'));
-        $label->appendChild(Widget::Input('settings[cachelite][lifetime]', General::sanitize($this->getLifetime())));
-        $group->appendChild($label);
-        $group->appendChild(new XMLElement('p', __('Length of cache period in seconds.'), array('class' => 'help')));
+        /**
+         * xCacheLite intentionally disables browser-side caching (max-age=0).
+         * This prevents stale content and ensures predictable behavior in modern browsers.
+         */
+        $group->appendChild(Widget::Input('settings[cachelite][lifetime]', General::sanitize($this->getLifetime()), 'hidden'));
 
         $label = Widget::Label(__('Excluded URLs'));
         $label->appendChild(Widget::Textarea('cachelite[excluded-pages]', 10, 50, $this->getExcludedPages()));
         $group->appendChild($label);
         $group->appendChild(new XMLElement('p', __('Add a line for each URL you want to be excluded from the cache. Add a <code>*</code> to the end of the URL for wildcard matches.'), array('class' => 'help')));
 
+        $div = new XMLElement('div', null, array('class' => 'two columns'));
+
+        // Purge cache method (two checkboxes)
+        $inputGroup = new XMLElement('div', null, array('class' => 'column'));
+
+        // First checkbox for backend (always enabled)
+        $label = Widget::Label();
+        $input = Widget::Input('cachelite[backend-delegates]', 'backend', 'checkbox');
+        $input->setAttribute('disabled', 'disabled');
+        if (Symphony::Configuration()->get('backend-delegates', 'cachelite') === 'yes') {
+            $input->setAttribute('checked', 'checked');
+        }
+        $label->appendChild($input);
+        $label->setValue(__('Purge cache automatically when entries change (always enabled)'));
+        $inputGroup->appendChild($label);
+
+        // Second checkbox for cron job
+        $label = Widget::Label();
+        $label->setAttribute('for', 'cachelite-clean-strategy');
+        $hidden = Widget::Input('settings[cachelite][clean-strategy]', 'no', 'hidden');
+        $input = Widget::Input('settings[cachelite][clean-strategy]', 'cron', 'checkbox');
+        $input->setAttribute('id', 'cachelite-clean-strategy');
+        if (Symphony::Configuration()->get('clean-strategy', 'cachelite') === 'cron') {
+            $input->setAttribute('checked', 'checked');
+        }
+        $label->setValue(__('%s Enable additional cache cleanup via cron job (useful for large sites with many cache files)', array($hidden->generate() . $input->generate())));
+        $inputGroup->appendChild($label);
+
+        $div->appendChild($inputGroup);
+
+        // Show comments in page source (single checkbox)
         $label = Widget::Label();
         $label->setAttribute('for', 'cachelite-show-comments');
+        $label->setAttribute('class', 'column');
         $hidden = Widget::Input('settings[cachelite][show-comments]', 'no', 'hidden');
         $input = Widget::Input('settings[cachelite][show-comments]', 'yes', 'checkbox');
         $input->setAttribute('id', 'cachelite-show-comments');
         if (Symphony::Configuration()->get('show-comments', 'cachelite') === 'yes') {
             $input->setAttribute('checked', 'checked');
         }
-        $label->setValue(__('%s Show comments in page source?', array($hidden->generate() . $input->generate())));
-        $group->appendChild($label);
+        $label->setValue(__('%s Show comments in page source and HTTP response headers (useful for debugging)', array($hidden->generate() . $input->generate())));
+        $div->appendChild($label);
 
-        $label = Widget::Label();
-        $label->setAttribute('for', 'cachelite-backend-delegates');
-        $hidden = Widget::Input('settings[cachelite][backend-delegates]', 'no', 'hidden');
-        $input = Widget::Input('settings[cachelite][backend-delegates]', 'yes', 'checkbox');
-        $input->setAttribute('id', 'cachelite-backend-delegates');
-        if (Symphony::Configuration()->get('backend-delegates', 'cachelite') === 'yes') {
-            $input->setAttribute('checked', 'checked');
-        }
-        $label->setValue( __('%s Expire cache when entries are created/updated through the backend?', array($hidden->generate() . $input->generate())));
-        $group->appendChild($label);
+        $group->appendChild($div);
+
         $context['wrapper']->appendChild($group);
     }
 
