@@ -10,6 +10,7 @@ class Extension_xcachelite extends Extension
     private $_entries = array();
     private $_pagedata = array();
     const CACHE_GROUP = 'cachelite';
+    private $servedFromCache = false;
 
     public function __construct()
     {
@@ -325,7 +326,8 @@ class Extension_xcachelite extends Extension
     protected function computeEtag()
     {
         $lastModified = $this->_cacheLite->lastModified();
-        return md5($lastModified . $this->_url);
+        $cacheFile = $this->_cacheLite->_fileName;
+        return md5_file(CACHE . '/' . $cacheFile);
     }
 
     public function writeCacheHeaders($cacheHit = 'MISS')
@@ -335,20 +337,35 @@ class Extension_xcachelite extends Extension
         @session_destroy();
         header_remove('Set-Cookie');
         // Cache headers
+        $cacheFile = $this->_cacheLite->_fileName;
         $lastModified = $this->_cacheLite->lastModified();
         $etag = $this->computeEtag();
         if ($cacheHit === 'HIT') {
             header("X-Content-Type-Options: nosniff");
             header("X-XSS-Protection: 1; mode=block");
         }
-        header("Cache-Control: public, max-age=" . $this->_lifetime . ", must-revalidate");
+        header("Cache-Control: no-cache, max-age=" . $this->_lifetime . ", must-revalidate, no-transform");
         header("Expires: " . gmdate("D, d M Y H:i:s", $lastModified + $this->_lifetime) . " GMT");
-        header("Last-Modified: " . gmdate('D, d M Y H:i:s', $lastModified) . ' GMT');
         header("ETag: \"$etag\"");
         header("Access-Control-Allow-Origin: " . URL);
         header("X-Frame-Options: SAMEORIGIN");
         header("X-Cache-Status: $cacheHit");
+        /**
+         * xCacheLite uses ETag-based revalidation only.
+         * Last-Modified is intentionally omitted to avoid false-positive cache
+         * misses caused by dynamic timestamps.
+         */
+        header_remove('Last-Modified');
+        /**
+         * Pragma is a deprecated HTTP/1.0 header.
+         * Modern caching behavior is fully controlled via Cache-Control and ETag.
+         * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Pragma
+         */
         header_remove('Pragma');
+        /**
+         * Add a X-Cache-Lite header if comments are enabled
+         * Useful for debugging
+         */
         if ($this->getCommentPref() === 'yes') {
             header("X-Cache-Lite: " . $this->_cacheLite->_fileName);
         }
@@ -403,6 +420,8 @@ class Extension_xcachelite extends Extension
             // no cache entry found
             if (!$output) {
                 return;
+            } else {
+                $this->servedFromCache = true;
             }
 
             // Try to return 304
@@ -410,8 +429,10 @@ class Extension_xcachelite extends Extension
             $ifNoneMatch = $_SERVER['HTTP_IF_NONE_MATCH'] ?? null;
 
             if (isset($ifModifiedSince) || isset($ifNoneMatch)) {
-                $modified = $this->_cacheLite->lastModified();
-                $modified_gmt = gmdate('r', $modified);
+                #$modified = $this->_cacheLite->lastModified();
+                #$modified_gmt = gmdate('r', $modified);
+                $cachePath = CACHE . '/' . $this->_cacheLite->_fileName;
+                $modified_gmt = gmdate('r', filemtime($cachePath));
                 if (
                     $ifModifiedSince === $modified_gmt
                     || str_replace('"', NULL, stripslashes($ifNoneMatch)) === $this->computeEtag()
@@ -423,10 +444,9 @@ class Extension_xcachelite extends Extension
 
             // Add comment
             if ($this->getCommentPref() === 'yes') {
-                $output .= "<!-- Cache hit: ". $this->_cacheLite->_fileName ." -->";
+                $output .= "<!-- xCacheLite: ". $this->_cacheLite->_fileName ." -->";
             }
 
-            // Write headers
             $this->writeCacheHeaders('HIT');
 
             // Send response
@@ -449,16 +469,24 @@ class Extension_xcachelite extends Extension
             $this->deletePageReferences($this->_url);
             $this->savePageReferences($this->_url, $this->_sections, $this->_entries);
 
-            // Actually write the cache
-            $this->_cacheLite->save($render, $this->_url, self::CACHE_GROUP);
+            if ($this->servedFromCache === false) {
+                // Actually write the cache
+                $this->_cacheLite->save($render, $this->_url, self::CACHE_GROUP);
+            }
 
             // Add comment
             if ($this->getCommentPref() === 'yes') {
-                $render .= "<!-- Cache miss: ". $this->_cacheLite->_fileName ." -->";
+                $render .= "<!-- xCacheLite: ". $this->_cacheLite->_fileName ." -->";
             }
 
             // Write headers
-            $this->writeCacheHeaders();
+            $cache = $this->getCacheState();
+
+            if ($cache['exists'] && !$cache['expired']) {
+                $this->writeCacheHeaders('HIT');
+            } else {
+                $this->writeCacheHeaders();
+            }
 
             // Send response
             echo $render;
@@ -596,6 +624,24 @@ class Extension_xcachelite extends Extension
     /*-------------------------------------------------------------------------
      *       Helpers
      *-------------------------------------------------------------------------*/
+
+    private function getCacheState(): array
+    {
+        $file = $this->_cacheLite->_file;
+
+        if (!is_file($file)) {
+            return ['exists' => false, 'expired' => true];
+        }
+
+        $lifetime = $this->getLifetime();
+        $mtime = filemtime($file);
+
+        return [
+            'exists'  => true,
+            'expired' => (time() > ($mtime + $lifetime)),
+            'mtime'   => $mtime
+        ];
+    }
 
     private function getLifetime()
     {
