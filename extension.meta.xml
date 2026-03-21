@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <extension id="xcachelite" status="released" xmlns="http://getsymphony.com/schemas/extension/1.0">
   <name>xCacheLite</name>
-  <description>Simple frontend output caching with CacheLite.</description>
-  <repo type="github">https://github.com/symphonists/cachelite</repo>
-  <url type="issues">https://github.com/symphonists/cachelite/issues</url>
+  <description>Lightweight frontend output caching with CacheLite.</description>
+  <repo type="github">https://github.com/sym8-io/xcachelite</repo>
+  <url type="issues">https://github.com/sym8-io/xcachelite/issues</url>
   <types>
     <type>Performance</type>
     <type>Events</type>
@@ -11,11 +11,20 @@
   </types>
   <authors>
     <author>
-      <name github="symphonists" symphony="community">Symphony Community</name>
-      <website>http://www.getsymphony.com/</website>
+      <name github="sym8-io">Sym8</name>
+      <website>https://sym8.io/</website>
     </author>
   </authors>
   <releases>
+    <release version="3.0.0" date="2026-03-20" min="2.6.x" max="2.x.x">
+      - This release starts at version 3.0.0 to reflect significant changes in behavior and compatibility with Sym8.
+      - Change preference settings
+      - Change default cache headers
+      - Execution of the cron job only via a server cron job
+      - Use utf8mb4 as default charset for xCacheLite tables
+      - PHP 8 fixes
+      - Add latest Cache_Lite 1.8.3
+    </release>
     <release version="2.2.0" date="2020-12-17" min="2.6.x" max="2.x.x">
       - Add a BYPASS value in the header when an extension forces cache bypass
     </release>
